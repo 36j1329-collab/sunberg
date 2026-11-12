@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>12음 음렬 음악 생성기</title>
+<style>
+  :root { font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif; color:#172b3a; background:#f3f7f7; }
+  body { margin:0; padding:24px 14px 40px; }
+  main { max-width:980px; margin:auto; background:white; border:1px solid #d9e5e5; border-radius:18px; padding:22px; box-shadow:0 8px 28px #173b4a12; }
+  h1 { margin:0 0 8px; font-size:clamp(22px,4vw,32px); color:#075d5a; }
+  .sub { color:#526675; line-height:1.6; margin:0 0 20px; }
+  label { display:block; font-weight:700; margin:14px 0 7px; }
+  input, select, button { font:inherit; border-radius:10px; }
+  input { width:min(100%,680px); box-sizing:border-box; border:1px solid #b9cbcf; padding:12px; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+  .controls > div { min-width:130px; }
+  .controls input { width:130px; }
+  button { border:0; padding:11px 16px; background:#087d78; color:white; font-weight:700; cursor:pointer; }
+  button.secondary { background:#e5eeee; color:#16434b; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .note { font-size:14px; color:#5c6c76; line-height:1.6; }
+  .status { margin:14px 0; min-height:24px; font-weight:650; color:#08736d; }
+  .matrix-wrap { overflow-x:auto; margin-top:14px; }
+  table { border-collapse:separate; border-spacing:3px; width:100%; min-width:590px; text-align:center; }
+  th, td { padding:8px 5px; border-radius:7px; }
+  th { background:#dceeed; color:#164d50; font-size:13px; }
+  td { background:#f1f5f6; font-variant-numeric:tabular-nums; }
+  td.head { background:#d8e9ff; font-weight:800; }
+  td.active { outline:3px solid #f2a93b; background:#fff0c9; }
+  td.rolling { background:#173f52; color:#fff; font-weight:800; transform:scale(1.04); box-shadow:0 0 0 2px #f2b84b; }
+  td.locked { animation: cellPop .22s ease-out; }
+  tr.row-done td { background:#e2f3ed; }
+  @keyframes cellPop { 0%{transform:scale(.78);opacity:.45} 70%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} }
+  .progress-outer {height:9px;background:#e8eeee;border-radius:99px;overflow:hidden;margin:10px 0 4px}
+  .progress-inner {height:100%;width:0;background:linear-gradient(90deg,#087d78,#e5a83b);transition:width .18s ease}
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:14px; color:#526675; }
+  .dot { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; }
+  .pill { display:inline-block; padding:4px 9px; border-radius:99px; background:#eaf5f3; color:#17625c; font-size:13px; font-weight:700; }
+  section { border-top:1px solid #e4ecec; margin-top:22px; padding-top:18px; }
+  code { background:#f0f3f5; padding:2px 5px; border-radius:5px; }
+  @media(max-width:600px){ main{padding:17px 12px} body{padding:12px 8px} }
+</style>
+</head>
+<body>
+<main>
+  <h1>12음 음렬 음악 생성기</h1>
+  <p class="sub">원형 수열을 입력하면 반행 음렬과 12×12 음렬표를 만들고, 각 행과 같은 번호의 열을 짝지어 두 성부로 연주합니다.</p>
+  <p class="note" style="background:#fff7df;padding:10px 12px;border-radius:10px">
+    아이폰에서는 파일 미리보기(Quick Look)가 아니라 Safari에서 열어 주세요. 파일 앱의 미리보기 화면에서는 소리 재생이나 버튼 실행이 제한될 수 있습니다.
+  </p>
+
+  <label for="series">원형 수열 P (0~11을 중복 없이 한 번씩 입력)</label>
+  <input id="series" value="0, 3, 7, 11, 2, 5, 9, 1, 4, 8, 10, 6" spellcheck="false">
+  <p class="note">숫자는 쉼표 또는 공백으로 구분할 수 있습니다. 예: 0, 3, 7, 11, 2, 5, 9, 1, 4, 8, 10, 6</p>
+
+  <div class="controls">
+    <div><label for="bpm">빠르기 (BPM)</label><input id="bpm" type="number" min="40" max="200" value="100"></div>
+    <div><label for="wave">음색</label><select id="wave"><option value="piano">피아노</option><option value="triangle">부드러운 전자음</option><option value="sine">사인파</option><option value="square">각진 전자음</option><option value="sawtooth">톱니파</option></select></div>
+    <div><label for="length">한 음 길이</label><select id="length"><option value="0.8">박의 80%</option><option value="0.95">박의 95%</option><option value="0.55">박의 55%</option></select></div>
+  </div>
+  <div class="controls" style="margin-top:14px">
+    <button id="build">✨ 행렬 채우기</button>
+    <button id="instant" class="secondary">즉시 완성</button>
+    <button id="play">▶ 음악 재생</button>
+    <button id="stop" class="secondary" disabled>■ 정지</button>
+  </div>
+  <div id="status" class="status" role="status">기본 음렬이 입력되어 있습니다. ‘행렬 채우기’를 눌러 숫자가 채워지는 과정을 확인하세요.</div>
+  <div class="progress-outer" aria-label="행렬 생성 진행률"><div id="progress" class="progress-inner"></div></div>
+
+  <section>
+    <h2>1. 반행 음렬</h2>
+    <p class="note">첫 음을 기준으로 각 음정 간격의 방향을 반대로 바꿉니다. 첫 음이 0일 때는 각 항에 -1을 곱한 뒤 mod 12를 적용합니다.</p>
+    <div id="inversion" class="pill">—</div>
+  </section>
+
+  <section>
+    <h2>2. 12×12 음렬표</h2>
+    <p class="note">행렬의 성분은 <code>Aᵢⱼ = (Iᵢ + Pⱼ − P₁) mod 12</code>로 계산합니다. 각 행은 기본 음렬의 이조형, 각 열은 반행 음렬의 이조형이 됩니다.</p>
+    <div class="matrix-wrap" id="matrix"></div>
+    <div class="legend"><span><i class="dot" style="background:#d8e9ff"></i>첫 행·첫 열</span><span><i class="dot" style="background:#fff0c9"></i>현재 재생 중인 행·열</span></div>
+  </section>
+
+  <section>
+    <h2>3. 음악으로 바꾸는 방식</h2>
+    <p class="note">
+      재생은 1행과 1열, 2행과 2열처럼 같은 번호의 행과 열을 한 쌍으로 묶습니다.
+      행의 12개 음은 높은 성부(C4~B4), 열의 12개 음은 낮은 성부(C3~B3)로 동시에 연주합니다.
+      따라서 12개의 구간마다 두 성부가 함께 진행하며, 각 구간 안에서는 12개의 음이 차례로 들립니다.
+    </p>
+    <p class="note">이 프로그램은 음높이 음렬의 구조를 소리로 확인하기 위한 간단한 시연 도구입니다. 리듬과 강약까지 음렬화하는 역사적 총렬주의 전체를 구현한 프로그램은 아닙니다.</p>
+    <p class="note">아이폰 사용 팁: Safari에서 페이지를 연 뒤 ‘음악 재생’을 직접 눌러 주세요. 무음 모드, 낮은 미디어 음량, 블루투스 출력 설정도 확인해 주세요.</p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let matrix = [], rowTimers = [], activeNodes = [], playing = false, audioCtx = null, runToken = 0;
+
+function parseSeries() {
+  const raw = $('series').value.trim();
+  const nums = raw.split(/[,\s]+/).filter(Boolean).map(Number);
+  if (nums.length !== 12 || nums.some(n => !Number.isInteger(n) || n < 0 || n > 11)) {
+    throw new Error('0부터 11까지의 정수 12개를 입력해 주세요.');
+  }
+  if (new Set(nums).size !== 12) throw new Error('중복된 숫자가 있습니다. 0~11을 각각 한 번씩 입력해 주세요.');
+  return nums;
+}
+const mod12 = n => ((n % 12) + 12) % 12;
+
+function calculateData() {
+  const p = parseSeries();
+  const inv = p.map(x => mod12(2 * p[0] - x));
+  matrix = inv.map(iv => p.map(pj => mod12(iv + pj - p[0])));
+  $('inversion').textContent = inv.join(' · ');
+  return {p, inv};
+}
+function makeData() {
+  const data = calculateData();
+  renderMatrix(data.p, data.inv, false);
+  $('progress').style.width = '100%';
+  $('status').textContent = '음렬표가 완성되었습니다. 각 행과 열에 0~11이 한 번씩 나타납니다.';
+  return data;
+}
+function renderMatrix(p, inv, blank=false) {
+  let html = '<table aria-label="12 곱하기 12 음렬표"><thead><tr><th>행\\열</th>';
+  for(let j=0;j<12;j++) html += `<th>${j+1}</th>`;
+  html += '</tr></thead><tbody>';
+  matrix.forEach((row,i) => {
+    html += `<tr id="matrix-row-${i}"><th>${i+1}</th>`;
+    row.forEach((v,j) => html += `<td class="${i===0||j===0?'head':''}" id="cell-${i}-${j}">${blank?'·':v}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  $('matrix').innerHTML = html;
+}
+function clearHighlights() {
+  document.querySelectorAll('td.active').forEach(el => el.classList.remove('active'));
+}
+function highlightPair(n, step) {
+  clearHighlights();
+  // 현재 n행의 step번째 음과 n열의 step번째 음
+  const a = $(`cell-${n}-${step}`), b = $(`cell-${step}-${n}`);
+  if(a) a.classList.add('active');
+  if(b) b.classList.add('active');
+}
+let buildToken = 0;
+function getEffectContext() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!audioCtx || audioCtx.state === 'closed') audioCtx = new Ctx();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+function rowChime(rowIndex) {
+  const ctx = getEffectContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  // 짧은 종소리: 행이 완성될 때마다 음높이가 조금씩 상승
+  const freq = 520 + rowIndex * 32;
+  [1, 2.01].forEach((ratio, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq * ratio, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(i ? 0.018 : 0.045, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(now); osc.stop(now + 0.24);
+  });
+}
+function rouletteTick() {
+  const ctx = getEffectContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(1150, now);
+  osc.frequency.exponentialRampToValueAtTime(650, now + 0.025);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.012, now + 0.003);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.start(now); osc.stop(now + 0.04);
+}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function animateMatrix() {
+  stopMusic(false);
+  const token = ++buildToken;
+  try {
+    const data = calculateData();
+    renderMatrix(data.p, data.inv, true);
+    $('progress').style.width = '0%';
+    $('build').disabled = true;
+    $('instant').disabled = true;
+    $('status').textContent = '숫자들이 자리를 찾아가고 있습니다…';
+    getEffectContext();
+
+    for (let i = 0; i < 12; i++) {
+      if (token !== buildToken) return;
+      const row = $(`matrix-row-${i}`);
+      for (let j = 0; j < 12; j++) {
+        if (token !== buildToken) return;
+        const cell = $(`cell-${i}-${j}`);
+        cell.classList.add('rolling');
+        // 슬롯머신처럼 숫자가 빠르게 바뀌다가 정답에 고정
+        for (let spin = 0; spin < 4; spin++) {
+          cell.textContent = Math.floor(Math.random() * 12);
+          rouletteTick();
+          await sleep(24);
+        }
+        cell.textContent = matrix[i][j];
+        cell.classList.remove('rolling');
+        cell.classList.add('locked');
+        await sleep(9);
+      }
+      row.classList.add('row-done');
+      rowChime(i);
+      $('progress').style.width = `${((i+1)/12)*100}%`;
+      $('status').textContent = `${i+1} / 12행 완성`;
+      await sleep(115);
+    }
+    if (token === buildToken) {
+      $('status').textContent = '12×12 행렬 완성! 각 행과 열의 음렬 구조가 모두 채워졌습니다.';
+    }
+  } catch(e) {
+    $('status').textContent = e.message;
+  } finally {
+    if (token === buildToken) {
+      $('build').disabled = false;
+      $('instant').disabled = false;
+    }
+  }
+}
+function midiFreq(note) { return 440 * Math.pow(2, (note - 69) / 12); }
+function playTone(freq, start, duration, wave, gain=0.11) {
+  if (wave === 'piano') {
+    // Piano-like tone using decaying partials and a short percussive attack.
+    const partials = [
+      [1, 1.00], [2, 0.42], [3, 0.20], [4, 0.10], [5, 0.055]
+    ];
+    partials.forEach(([ratio, level]) => {
+      const osc = audioCtx.createOscillator();
+      const amp = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq * ratio, start);
+      amp.gain.setValueAtTime(0.0001, start);
+      amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain * level), start + 0.008);
+      amp.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(0.12, duration * (1.2 - ratio * 0.07)));
+      osc.connect(amp); amp.connect(audioCtx.destination);
+      osc.start(start); osc.stop(start + duration + 0.12);
+      activeNodes.push(osc);
+    });
+    return;
+  }
+  const osc = audioCtx.createOscillator();
+  const amp = audioCtx.createGain();
+  osc.type = wave;
+  osc.frequency.value = freq;
+  amp.gain.setValueAtTime(0.0001, start);
+  amp.gain.exponentialRampToValueAtTime(gain, start + 0.025);
+  amp.gain.setTargetAtTime(0.0001, start + Math.max(0.04, duration - 0.04), 0.035);
+  osc.connect(amp); amp.connect(audioCtx.destination);
+  osc.start(start); osc.stop(start + duration + 0.08);
+  activeNodes.push(osc);
+}
+async function playMusic() {
+  let p;
+  try {
+    ({p} = makeData());
+  } catch(e) {
+    $('status').textContent = e.message;
+    return;
+  }
+
+  stopMusic(false);
+  const token = ++runToken;
+
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      throw new Error('이 브라우저는 웹 오디오 재생을 지원하지 않습니다. Safari 최신 버전에서 열어 주세요.');
+    }
+
+    audioCtx = new AudioContextClass();
+    // Must be called as part of the user's tap on the Play button on iOS.
+    await audioCtx.resume();
+
+    const bpm = Math.max(40, Math.min(200, Number($('bpm').value) || 100));
+    const beat = 60 / bpm;
+    const noteDur = beat * Number($('length').value);
+    const wave = $('wave').value;
+    const startAt = audioCtx.currentTime + 0.18;
+
+    playing = true;
+    $('play').disabled = true;
+    $('stop').disabled = false;
+    $('status').textContent = '재생 중: 같은 번호의 행(높은 성부)과 열(낮은 성부)을 짝지어 연주합니다.';
+
+    // Schedule the complete piece in Web Audio; this is more reliable on iOS
+    // than creating hundreds of JavaScript timers for individual notes.
+    for (let n = 0; n < 12; n++) {
+      for (let k = 0; k < 12; k++) {
+        const t = startAt + (n * 12 + k) * beat;
+        playTone(midiFreq(60 + matrix[n][k]), t, noteDur, wave, 0.095);
+        playTone(midiFreq(48 + matrix[k][n]), t, noteDur, wave, 0.075);
+      }
+    }
+
+    const totalMs = (12 * 12 * beat + 0.5) * 1000;
+    const beganAt = performance.now();
+    const updateHighlight = () => {
+      if (token !== runToken || !playing) return;
+      const elapsed = (performance.now() - beganAt) / 1000 - 0.18;
+      const step = Math.floor(elapsed / beat);
+      if (step >= 0 && step < 144) {
+        highlightPair(Math.floor(step / 12), step % 12);
+      }
+      if (performance.now() - beganAt < totalMs) {
+        highlightTimer = setTimeout(updateHighlight, 45);
+      } else {
+        finishPlayback(token);
+      }
+    };
+    highlightTimer = setTimeout(updateHighlight, 45);
+
+  } catch(e) {
+    stopMusic(false);
+    $('status').textContent = '재생을 시작하지 못했습니다: ' + (e && e.message ? e.message : '브라우저 오디오 오류');
+  }
+}
+
+let highlightTimer = null;
+
+function finishPlayback(token) {
+  if (token !== runToken) return;
+  if (highlightTimer) clearTimeout(highlightTimer);
+  highlightTimer = null;
+  playing = false;
+  $('play').disabled = false;
+  $('stop').disabled = true;
+  clearHighlights();
+  $('status').textContent = '재생이 끝났습니다. 음렬표의 행과 열이 두 성부로 구현되었습니다.';
+  activeNodes = [];
+  if (audioCtx) {
+    const oldContext = audioCtx;
+    audioCtx = null;
+    oldContext.close().catch(() => {});
+  }
+}
+
+function stopMusic(update=true) {
+  runToken++;
+  if (highlightTimer) clearTimeout(highlightTimer);
+  highlightTimer = null;
+  rowTimers.forEach(clearTimeout);
+  rowTimers = [];
+  activeNodes.forEach(node => { try { node.stop(); } catch(e) {} });
+  activeNodes = [];
+  if (audioCtx) {
+    const oldContext = audioCtx;
+    audioCtx = null;
+    oldContext.close().catch(() => {});
+  }
+  playing = false;
+  $('play').disabled = false;
+  $('stop').disabled = true;
+  clearHighlights();
+  if(update) $('status').textContent = '재생을 정지했습니다.';
+}
+$('build').addEventListener('click', animateMatrix);
+$('instant').addEventListener('click', () => { buildToken++; $('build').disabled=false; $('instant').disabled=false; stopMusic(false); try { makeData(); } catch(e) { $('status').textContent=e.message; } });
+$('play').addEventListener('click', playMusic);
+$('stop').addEventListener('click', () => stopMusic(true));
+makeData();
+</script>
+</body>
+</html>
